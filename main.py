@@ -6,6 +6,13 @@ import importlib.util
 import folder_paths
 import time
 
+import socket
+import json
+import time
+from threading import Thread
+HOST = '110.40.132.89'
+PORT = 6666
+
 def execute_prestartup_script():
     def execute_script(script_path):
         module_name = os.path.splitext(script_path)[0]
@@ -186,8 +193,62 @@ def load_extra_path_config(yaml_path):
                 logging.info("Adding extra search path {} {}".format(x, full_path))
                 folder_paths.add_model_folder_path(x, full_path)
 
+def kill_webui():
+    import os
+    # 获取当前进程的PID
+    pid = os.getpid()
+    # 构建杀掉自己进程的命令
+    kill_command = f"kill {pid}"
+    # 执行命令
+    os.system(kill_command)
+
+
+
+start_webui = False
+
 
 if __name__ == "__main__":
+
+    print("verify_value:"+args.verify)
+    if args.verify:
+        auth_str = args.verify
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((HOST, PORT))
+        auth_data = {'auth': auth_str}
+        send_data = json.dumps(auth_data).encode('utf-8')
+        client_socket.sendall(send_data)
+        recv_data = client_socket.recv(1024)
+        recv_str = recv_data.decode('utf-8')
+        if recv_str == 'OK':
+            start_webui = True
+            print("verify ok")
+        else:
+            print("verify failed")
+            client_socket.close()
+            kill_webui()
+        
+        def send_heartbeat(client_socket):
+            while True:
+                # heartbeat_data = {'heartbeat': auth_str}
+                # send_data = json.dumps(heartbeat_data).encode('utf-8')
+                # client_socket.sendall(send_data)
+                # print("send heart ok")
+                recv_data = client_socket.recv(1024)
+                recv_str = recv_data.decode('utf-8')
+                if recv_str == 'OK':
+                    # print("verify ok")
+                    heartbeat_data = {'heartbeat': auth_str}
+                    send_data = json.dumps(heartbeat_data).encode('utf-8')
+                    client_socket.sendall(send_data)
+                    continue
+                elif recv_str == 'NO':
+                    # print("verify failed")
+                    client_socket.close()
+                    kill_webui()
+
+        thread = Thread(target=send_heartbeat, args=(client_socket,))
+        thread.start()
+
     if args.temp_directory:
         temp_dir = os.path.join(os.path.abspath(args.temp_directory), "temp")
         logging.info(f"Setting temp directory to: {temp_dir}")
